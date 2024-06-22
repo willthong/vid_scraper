@@ -1,0 +1,19 @@
+[tool.poetry]
+name = "vid-scraper"
+version = "0.1.0"
+description = "Scrape a Contact Creator-generated VID sheet"
+license = "MIT"
+authors = [
+    "Will Thong <will@willthong.com>"
+]
+package-mode = false
+
+[tool.poetry.dependencies]
+python = "^3.12"
+pdfminer-six = "20231228"
+pdfplumber = "^0.11.1"
+
+[build-system]
+# Should be the same as $POETRY_VERSION
+requires = ["poetry-core>=1.8"]
+build-backend = "poetry.core.masonry.api"
