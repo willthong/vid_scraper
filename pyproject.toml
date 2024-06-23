@@ -9,6 +9,7 @@ authors = [
 package-mode = false
 
 [tool.poetry.dependencies]
+fpdf2 = "^2.7.9"
 python = "^3.12"
 pdfminer-six = "20231228"
 pdfplumber = "^0.11.1"

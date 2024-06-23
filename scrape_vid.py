@@ -42,24 +42,27 @@ def extract_metadata(page):
         r"\: (.*)",
         text[2],
     )[0]
-    try:
-        polling_district = re.findall(
-            r"\: (.*)",
-            text[3],
-        )[0].split(
-            " "
-        )[0]
-    except IndexError:
-        polling_district = text[4]
-        polling_district = re.sub(r"[a-z]", "", polling_district).split(" ")[0]
-        if polling_district in ["0G15AH", "0C15AH"]:
-            polling_district = "015AH"
-        if polling_district == "0N15AI":
-            polling_district = "015AI"
-        if polling_district in ["0R15AM", "0L15AM", "0W15A", "0G15A"]:
-            polling_district = "015AM"
-        if polling_district in ["0E15E"]:
-            polling_district = "015ED"
+    if "0E1lm5E DXrive" in text[4]:
+        polling_district = "OE15X"
+    else:
+        try:
+            polling_district = re.findall(
+                r"\: (.*)",
+                text[3],
+            )[0].split(
+                " "
+            )[0]
+        except IndexError:
+            polling_district = text[4]
+            polling_district = re.sub(r"[a-z]", "", polling_district).split(" ")[0]
+            if polling_district in ["0G15AH", "0C15AH"]:
+                polling_district = "015AH"
+            if polling_district == "0N15AI":
+                polling_district = "015AI"
+            if polling_district in ["0R15AM", "0L15AM", "0W15A", "0G15A"]:
+                polling_district = "015AM"
+            if polling_district in ["0E15E"]:
+                polling_district = "015ED"
     return ward, road_group, polling_district
 
 
@@ -165,7 +168,7 @@ def extract_voters(page, road_name):
                     current_voter["note"] = line.replace("§", "").strip()
             # Found address
             elif "Current Postal Voter" in line:
-                current_voter["postal"] = True
+                current_voter["has_postal"] = True
             elif "POSTER" in line:
                 pass
             elif "Lab Scale:" in line:
@@ -216,7 +219,6 @@ def load_pdf(filename):
         for index, page in enumerate(file.pages):
             page_type = define_page_type(page)
             if page_type == "vid_sheet":
-
                 road_name = extract_road_name(page)
                 ward, road_group, polling_district = extract_metadata(page)
                 voters = extract_voters(page, road_name)
@@ -235,7 +237,27 @@ def load_pdf(filename):
         return all_voters
 
 
-def write_data(all_voters):
+def split_vids(voters):
+    vids = []
+    for voter in voters:
+        if not voter["last_vid"]:
+            continue
+        vid = {
+            "elector_id": voter["polling_district"] + voter["elector_number"],
+            "vid": voter["last_vid"],
+            "vid_labour_scale": voter["last_vid_labour_scale"],
+            "vid_date": voter["last_vid_date"],
+        }
+        vids.append(vid)
+    return vids
+
+
+def adapt_time_object(time_object):
+    # https://stackoverflow.com/questions/27640857/best-way-to-store-python-datetime-time-in-a-sqlite3-column
+    return datetime.strftime(time_object, "%Y-%m-%d")
+
+
+def write_voter_data(all_voters, cursor):
     connection = sqlite3.connect("voter_data.db")
     cursor = connection.cursor()
     create_query = """
@@ -246,10 +268,8 @@ def write_data(all_voters):
             property_number TEXT,
             address TEXT,
             selection_id TEXT,
-            last_vid TEXT,
-            last_vid_labour_scale INTEGER,
-            last_vid_date INTEGER,
             is_member INTEGER,
+            has_postal INTEGER
             note TEXT,
             PRIMARY KEY (polling_district, elector_number)
         )
@@ -268,6 +288,7 @@ def write_data(all_voters):
             last_vid_labour_scale,
             last_vid_date, 
             is_member, 
+            has_postal,
             note
         )
         VALUES 
@@ -275,9 +296,6 @@ def write_data(all_voters):
         """
     voters_tuples = []
     for voter in all_voters:
-        last_vid_date = voter.get("last_vid_date", "")
-        if last_vid_date != "":
-            last_vid_date = last_vid_date.timestamp()
         voter_tuple = (
             voter.get("polling_district", ""),
             voter.get("elector_number", ""),
@@ -285,10 +303,8 @@ def write_data(all_voters):
             voter.get("property_number", ""),
             voter.get("address", ""),
             voter.get("selection_id", ""),
-            voter.get("last_vid", ""),
-            voter.get("last_vid_labour_scale", ""),
-            last_vid_date,
             voter.get("is_member", ""),
+            voter.get("has_postal", ""),
             voter.get("note", ""),
         )
         voters_tuples = voters_tuples + [voter_tuple]
@@ -296,6 +312,39 @@ def write_data(all_voters):
     duplicate_check(voters_tuples)
     cursor.executemany(insert_query, voters_tuples)
     connection.commit()
+    return
+
+
+def write_vid_data(vids, cursor):
+    cursor.execute(
+        """
+        CREATE TABLE vids (
+            elector_id TEXT,
+            voter_intention TEXT,
+            labour_scale TEXT,
+            date TEXT,
+            PRIMARY KEY (polling_district, elector_number)
+        )
+        """
+    )
+    insert_query = """
+        INSERT INTO vids
+        (elector_id, voter_intention, labour_scale, date)
+        VALUES 
+        (?, ?, ?, ?)
+        """
+    tuples = []
+    for vid in vids:
+        vid_tuple = (
+            vid.get("elector_id", ""),
+            vid.get("voter_intention", ""),
+            vid.get("labour_scale", ""),
+            vid.get("date", ""),
+        )
+        tuples += [vid_tuple]
+    cursor.executemany(insert_query, tuples)
+    connection.commit()
+    return
 
 
 all_voters = []
@@ -303,5 +352,12 @@ for file in os.listdir("input"):
     filename = os.fsdecode(file)
     if filename.endswith(".pdf"):
         all_voters += load_pdf("input/" + filename)
-write_data(all_voters)
+vids = split_vids(all_voters)
+
+connection = sqlite3.connect("voter_data.db")
+cursor = connection.cursor()
+sqlite3.register_adapter(datetime.time, adapt_time_object)
+write_voter_data(all_voters, cursor)
+write_vid_data(vids, cursor)
+
 print(f"All {len(all_voters)} voters scraped")
