@@ -1,9 +1,13 @@
 from fpdf import FPDF
+import pprint
 import sqlite3
 
-# Find list of wards, pulled from database (it'll print every road group in that ward)
+# Find list of PDs, pulled from database (it'll print every road group in that PD)
 
 # Selection options with numbers of voters in the selection
+
+# Default: all PDs
+polling_district = "015AD"
 
 
 def dictionary_factory(cursor, row):
@@ -30,39 +34,56 @@ class PDF(FPDF):
 
         # Title
         self.set_font("open-sans", "B", 20)
-        self.set_x(10)
-        self.set_y(10)
+        self.set_xy(5,5)
         self.cell(text="(Unauthorised) Voter ID")
-
-        # Page details
-        self.set_y(20)
-        self.set_font("open-sans", "", 9)
-        connection = sqlite3.connect("voter_data.db")
-        connection.row_factory = dictionary_factory
-        cursor = connection.cursor()
-        cursor.execute("SELECT * FROM voters WHERE road_group = *")
-
-        page_data = (
-            ("Constituency", "Huntingdon"),
-            ("Ward", "cursor.fetchone()['ward']"),
-            ("Road group", "cursor.fetchone()['road_group']"),
-            ("Polling district", "cursor.fetchone()['polling_district']"),
-            ("Polling place", "Ugh Will hasn't built this yet"),
-        )
-
-        with pdf.table(
-            width=100, col_widths=(30, 70), first_row_as_headings=False
-        ) as table:
-            for data_row in page_data:
-                row = table.row()
-                for datum in data_row:
-                    row.cell(datum)
 
 
 pdf = PDF()
 pdf.add_page()
+pdf.set_xy(5, 15)
+pdf.set_font("open-sans", "", 9)
+
+connection = sqlite3.connect("voter_data.db", detect_types=sqlite3.PARSE_DECLTYPES)
+cursor = connection.cursor()
+cursor.row_factory = dictionary_factory
+data = cursor.execute(
+    """
+    SELECT * FROM voters 
+    INNER JOIN roads ON roads.road_id = voters.road_id 
+    INNER JOIN road_groups ON roads.road_group_id = road_groups.road_group_id 
+    WHERE road_groups.polling_district = '015AD'
+    """
+).fetchall()
+pprint.pprint(data)
+
+page_data = (
+    ("Constituency", "Huntingdon"),
+    ("Ward", data[0]["ward"]),
+    ("Road group", data[0]["road_group_name"]),
+    ("Polling district", data[0]["polling_district"]),
+    ("Polling place", "Ugh Will hasn't built this yet"),
+)
+
+with pdf.table(
+    width=100,
+    col_widths=(30, 70),
+    align="LEFT",
+    first_row_as_headings=False,
+    borders_layout="None",
+    line_height=5,
+) as table:
+    for data_row in page_data:
+        row = table.row()
+        for datum in data_row:
+            row.cell(datum)
 
 # pdf.set_font("open-sans", "", 16)
 # pdf.cell(40, 10, "Hello World!")
 
 pdf.output("output.pdf")
+
+# Get list of RGs
+# Sort streets within that RG alphabetically
+# For each street:
+    # Start a new page
+

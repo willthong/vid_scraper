@@ -243,65 +243,113 @@ def split_vids(voters):
         if not voter["last_vid"]:
             continue
         vid = {
-            "elector_id": voter["polling_district"] + voter["elector_number"],
+            "polling_district": voter["polling_district"],
+            "elector_number": voter["elector_number"],
             "vid": voter["last_vid"],
-            "vid_labour_scale": voter["last_vid_labour_scale"],
+            "vid_labour_scale": voter.get("last_vid_labour_scale", ""),
             "vid_date": voter["last_vid_date"],
         }
         vids.append(vid)
     return vids
 
 
-def adapt_time_object(time_object):
+def adapt_datetime_object(datetime_object):
     # https://stackoverflow.com/questions/27640857/best-way-to-store-python-datetime-time-in-a-sqlite3-column
-    return datetime.strftime(time_object, "%Y-%m-%d")
+    return datetime_object.strftime("%Y-%m-%d %H:%M:%S")
 
 
-def write_voter_data(all_voters, cursor):
-    connection = sqlite3.connect("voter_data.db")
+def convert_datetime_object(date_string):
+    return datetime.strptime(date_string, "%Y-%m-%d %H:%M:%S")
+
+
+def write_road_group_data(road_groups, connection):
     cursor = connection.cursor()
-    create_query = """
-        CREATE TABLE voters (
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS road_groups (
+            road_group_id INTEGER PRIMARY KEY,
+            ward TEXT,
+            polling_district TEXT,
+            road_group_name TEXT
+        )"""
+    )
+    insert_query = """
+        INSERT INTO road_groups (ward, polling_district, road_group_name)
+        VALUES (?, ?, ?)
+    """
+    cursor.executemany(insert_query, road_groups)
+    connection.commit()
+    return
+
+
+def write_road_data(roads, connection):
+    cursor = connection.cursor()
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS roads (
+            road_id INTEGER PRIMARY KEY,
+            road_name TEXT,
+            road_group_id TEXT,
+            FOREIGN KEY (road_group_id)
+            REFERENCES road_groups(road_group_id)
+        )"""
+    )
+    insert_query = """
+        INSERT INTO roads (road_name, road_group_id)
+        VALUES (?, ?)
+    """
+    cursor.executemany(insert_query, roads)
+    connection.commit()
+    return
+
+
+def write_voter_data(all_voters, roads, connection):
+    cursor = connection.cursor()
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS voters (
             polling_district TEXT,
             elector_number TEXT,
-            name TEXT,
+            voter_name TEXT,
             property_number TEXT,
             address TEXT,
+            road_id INTEGER,
             selection_id TEXT,
             is_member INTEGER,
-            has_postal INTEGER
+            has_postal INTEGER,
             note TEXT,
+            FOREIGN KEY (road_id)
+            REFERENCES roads(road_id),
             PRIMARY KEY (polling_district, elector_number)
-        )
-    """
-    cursor.execute(create_query)
+        )"""
+    )
     insert_query = """
         INSERT INTO voters
         (
             polling_district, 
             elector_number, 
-            name, 
+            voter_name, 
             property_number,
             address, 
+            road_id,
             selection_id, 
-            last_vid, 
-            last_vid_labour_scale,
-            last_vid_date, 
             is_member, 
             has_postal,
             note
         )
         VALUES 
-        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
     voters_tuples = []
     for voter in all_voters:
+        road_name = voter.get("road_name")
         voter_tuple = (
             voter.get("polling_district", ""),
             voter.get("elector_number", ""),
             voter.get("name", ""),
             voter.get("property_number", ""),
             voter.get("address", ""),
+            [road[0] for road in roads].index(road_name) + 1,
             voter.get("selection_id", ""),
             voter.get("is_member", ""),
             voter.get("has_postal", ""),
@@ -315,31 +363,36 @@ def write_voter_data(all_voters, cursor):
     return
 
 
-def write_vid_data(vids, cursor):
+def write_vid_data(vids, connection):
+    cursor = connection.cursor()
     cursor.execute(
         """
-        CREATE TABLE vids (
-            elector_id TEXT,
+        CREATE TABLE IF NOT EXISTS vids (
+            vid_id INTEGER PRIMARY KEY,
+            polling_district TEXT,
+            elector_number TEXT,
             voter_intention TEXT,
             labour_scale TEXT,
             date TEXT,
-            PRIMARY KEY (polling_district, elector_number)
+            FOREIGN KEY (polling_district, elector_number) 
+            REFERENCES voters(polling_district, elector_number)
         )
         """
     )
     insert_query = """
         INSERT INTO vids
-        (elector_id, voter_intention, labour_scale, date)
+        (polling_district, elector_number, voter_intention, labour_scale, date)
         VALUES 
-        (?, ?, ?, ?)
+        (?, ?, ?, ?, ?)
         """
     tuples = []
     for vid in vids:
         vid_tuple = (
-            vid.get("elector_id", ""),
-            vid.get("voter_intention", ""),
-            vid.get("labour_scale", ""),
-            vid.get("date", ""),
+            vid["polling_district"],
+            vid["elector_number"],
+            vid.get("vid", ""),
+            vid.get("vid_labour_scale", ""),
+            vid.get("vid_date", ""),
         )
         tuples += [vid_tuple]
     cursor.executemany(insert_query, tuples)
@@ -352,12 +405,34 @@ for file in os.listdir("input"):
     filename = os.fsdecode(file)
     if filename.endswith(".pdf"):
         all_voters += load_pdf("input/" + filename)
-vids = split_vids(all_voters)
+road_groups = sorted(
+    set(
+        [
+            (voter["ward"], voter["polling_district"], voter["road_group"])
+            for voter in all_voters
+        ]
+    )
+)
 
-connection = sqlite3.connect("voter_data.db")
-cursor = connection.cursor()
-sqlite3.register_adapter(datetime.time, adapt_time_object)
-write_voter_data(all_voters, cursor)
-write_vid_data(vids, cursor)
+vids = split_vids(all_voters)
+roads = sorted(
+    set(
+        [
+            (
+                voter["road_name"],
+                [group[2] for group in road_groups].index(voter["road_group"]) + 1,
+            )
+            for voter in all_voters
+        ]
+    )
+)
+
+sqlite3.register_adapter(datetime, adapt_datetime_object)
+sqlite3.register_converter("DATETIME", convert_datetime_object)
+connection = sqlite3.connect("voter_data.db", detect_types=sqlite3.PARSE_DECLTYPES)
+write_road_group_data(road_groups, connection)
+write_road_data(roads, connection)
+write_voter_data(all_voters, roads, connection)
+write_vid_data(vids, connection)
 
 print(f"All {len(all_voters)} voters scraped")
