@@ -131,7 +131,10 @@ def extract_voters(page, road_name):
         # Found house number
         if line[0]:
             property_voters, current_voter = [], {}
-            property_number = line[0]
+            if line[0] == "-":
+                property_number = ""
+            else:
+                property_number = line[0]
         # Found elector number
         if line[1]:
             if current_voter and not two_line_elector:
