@@ -1,5 +1,6 @@
 from fpdf import FPDF
 import pprint
+import re
 import sqlite3
 
 # Find list of PDs, pulled from database (it'll print every road group in that PD)
@@ -103,26 +104,45 @@ data = cursor.execute(
     """
 ).fetchall()
 
+def order_road_voters(properties: list):
+    no_number_properties = [
+        voter
+        for voter in properties
+        if not voter["property_number"]
+    ]
+    numbered_properties = [
+        voter for voter in properties 
+        if voter["property_number"]
+    ]
+    if numbered_properties:
+        for property in numbered_properties:
+                property["property_just_numbers"] = "".join(
+                    re.findall(r'\d*', property["property_number"])
+                )
+                property["property_text"] = "".join(
+                    re.findall(r'[a-z][A-Z]*', property["property_number"])
+                )
+        numbered_properties.sort(key=lambda x: x.get("property_text", ""))
+        numbered_properties.sort(key=lambda x: int(x.get("property_just_numbers", 0)))
+    if no_number_properties:
+        no_number_properties.sort(key=lambda x: x["address"])
+    if not numbered_properties:
+        properties = no_number_properties
+    elif not no_number_properties:
+        properties = numbered_properties
+    else:
+        properties = no_number_properties + numbered_properties
+    return properties
+
+    
 road_groups = sorted(set([voter["road_group"] for voter in data]))
 for road_group in road_groups:
     roads = sorted(set([voter["road"] for voter in data]))
     for road in roads:
         road_voters = [voter for voter in data if voter["road"] == road]
-        no_number_properties = [
-            voter
-            for voter in road_voters
-            if voter["property_number"] != int or not voter["property_number"]
-        ]
-        numbered_properties = [
-            voter for voter in road_voters if type(voter["property_number"]) == int
-        ]
-        numbered_properties.sort(key=lambda x: int(x["property_number"]))
-        properties = no_number_properties + numbered_properties
-
-        pprint.pprint(
-            [(voter["address"], voter["property_number"]) for voter in properties]
-        )
-
+        road_voters = order_road_voters(road_voters)
+        # pprint.pprint([voter["address"] for voter in road_voters])
+        # print("\n")
 
 # for voter in data:
 #     print(voter["name"], voter["address"])
