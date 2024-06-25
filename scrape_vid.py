@@ -320,6 +320,7 @@ def write_voter_data(all_voters, roads, connection):
             selection_id TEXT,
             is_member INTEGER,
             has_postal INTEGER,
+            date_of_birth TEXT,
             note TEXT,
             FOREIGN KEY (road_id)
             REFERENCES roads(road_id),
@@ -338,10 +339,11 @@ def write_voter_data(all_voters, roads, connection):
             selection_id, 
             is_member, 
             has_postal,
+            date_of_birth,
             note
         )
         VALUES 
-        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
     voters_tuples = []
     for voter in all_voters:
@@ -356,6 +358,7 @@ def write_voter_data(all_voters, roads, connection):
             voter.get("selection_id", ""),
             voter.get("is_member", ""),
             voter.get("has_postal", ""),
+            voter.get("date_of_birth", ""),
             voter.get("note", ""),
         )
         voters_tuples = voters_tuples + [voter_tuple]
