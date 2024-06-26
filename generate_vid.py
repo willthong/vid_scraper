@@ -1,5 +1,6 @@
 from datetime import datetime
 from fpdf import FPDF
+from fpdf.table import TableSpan
 import pprint
 import re
 import sqlite3
@@ -188,7 +189,21 @@ def add_age_to_name(voter):
     return f"{name} ({age:.0f})"
 
 
-road_groups = sorted(set([voter["road_group"] for voter in data]))
+def split_into_houses(road_voters):
+    this_property, output_road_voters = [], []
+    for voter in road_voters:
+        if len(this_property) == 0:
+            this_property += [voter]
+        elif voter["property_number"] == this_property[0]["property_number"]:
+            this_property += [voter]
+        else:
+            output_road_voters += [this_property]
+            this_property = [voter]
+    if this_property:
+        output_road_voters += [this_property]
+    pprint.pprint(output_road_voters)
+    return output_road_voters
+
 
 pdf.add_font(
     "open-sans",
@@ -196,6 +211,7 @@ pdf.add_font(
     fname="fonts/OpenSans-Bold.ttf",
 )
 
+road_groups = sorted(set([voter["road_group"] for voter in data]))
 for road_group in road_groups:
     roads = sorted(set([voter["road"] for voter in data]))
     pdf.r_margin = pdf.r_margin / 10
@@ -203,12 +219,14 @@ for road_group in road_groups:
     for road in roads:
         road_voters = [voter for voter in data if voter["road"] == road]
         road_voters = order_road_voters(road_voters)
+        road_voters = split_into_houses(road_voters)
+
+        pdf.add_page()
 
         # Print heading
         pdf.set_font("open-sans", "B", 9)
         pdf.set_xy(5, 45)
-        pdf.cell(text=road_voters[0]["road"])
-        pdf.add_page()
+        pdf.cell(text=road_voters[0][0]["road"])
 
         pdf.add_font(
             "segoe-ui-emoji",
@@ -232,28 +250,52 @@ for road_group in road_groups:
                 "No",
             ),
         ]
-        for voter in road_voters:
-            voter_tuple = (
-                voter["property_number"],
-                voter["name"] if not voter["date_of_birth"] else add_age_to_name(voter),
-                voter["selection_id"],
-                extract_vid(voter),
+        for property_group in road_voters:
+            # Address line
+            table_data += [
                 (
-                    ""
-                    if not voter["last_vid_date"]
-                    else datetime.strftime(
-                        datetime.strptime(voter["last_vid_date"], "%Y-%m-%d %H:%M:%S"),
-                        "%d/%m/%Y",
-                    )
-                ),
-                "💌" if voter["has_postal"] == 1 else "",
-                "🌹" if voter["is_member"] == 1 else "",
-                "",
-                "",
-                "",
-                voter["elector_number"],
-            )
-            table_data.append(voter_tuple)
+                    property_group[0]["address"],
+                    TableSpan.COL,
+                    TableSpan.COL,
+                    TableSpan.COL,
+                    TableSpan.COL,
+                    TableSpan.COL,
+                    TableSpan.COL,
+                    TableSpan.COL,
+                    TableSpan.COL,
+                    TableSpan.COL,
+                    TableSpan.COL,
+                )
+            ]
+
+            for voter in property_group:
+                voter_tuple = (
+                    voter["property_number"],
+                    (
+                        voter["name"]
+                        if not voter["date_of_birth"]
+                        else add_age_to_name(voter)
+                    ),
+                    voter["selection_id"],
+                    extract_vid(voter),
+                    (
+                        ""
+                        if not voter["last_vid_date"]
+                        else datetime.strftime(
+                            datetime.strptime(
+                                voter["last_vid_date"], "%Y-%m-%d %H:%M:%S"
+                            ),
+                            "%d/%m/%Y",
+                        )
+                    ),
+                    "💌" if voter["has_postal"] == 1 else "",
+                    "🌹" if voter["is_member"] == 1 else "",
+                    "",
+                    "",
+                    "",
+                    voter["elector_number"],
+                )
+                table_data.append(voter_tuple)
 
         pdf.set_xy(5, 50)
         pdf.set_line_width(0.1)
@@ -275,7 +317,6 @@ for road_group in road_groups:
 pdf.output("output.pdf")
 
 # #TODO Addresses
-# #TODO For each street:
-# #TODO Start a new page
+# #TODO For each street, start a new page
 
 # Printed and promoted by R Jewell, 10A The Highway, Gt Staughton, PE19 5DA
