@@ -1,7 +1,6 @@
 from generate_vid import generate_polling_district
 from scrape_vid import vid_sheet_import
-
-# from import_polling_stations import import_polling_stations
+from import_polling_stations import import_polling_stations
 
 
 def select_import():
