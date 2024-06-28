@@ -405,40 +405,45 @@ def write_vid_data(vids, connection):
     connection.commit()
     return
 
-
-all_voters = []
-for file in os.listdir("input"):
-    filename = os.fsdecode(file)
-    if filename.endswith(".pdf"):
-        all_voters += load_pdf("input/" + filename)
-road_groups = sorted(
-    set(
-        [
-            (voter["ward"], voter["polling_district"], voter["road_group"])
-            for voter in all_voters
-        ]
+def vid_sheet_import():
+    all_voters = []
+    for file in os.listdir("input"):
+        filename = os.fsdecode(file)
+        if filename.endswith(".pdf"):
+            all_voters += load_pdf("input/" + filename)
+    road_groups = sorted(
+        set(
+            [
+                (voter["ward"], voter["polling_district"], voter["road_group"])
+                for voter in all_voters
+            ]
+        )
     )
-)
 
-vids = split_vids(all_voters)
-roads = sorted(
-    set(
-        [
-            (
-                voter["road_name"],
-                [group[2] for group in road_groups].index(voter["road_group"]) + 1,
-            )
-            for voter in all_voters
-        ]
+    vids = split_vids(all_voters)
+    roads = sorted(
+        set(
+            [
+                (
+                    voter["road_name"],
+                    [group[2] for group in road_groups].index(voter["road_group"]) + 1,
+                )
+                for voter in all_voters
+            ]
+        )
     )
-)
 
-sqlite3.register_adapter(datetime, adapt_datetime_object)
-sqlite3.register_converter("DATETIME", convert_datetime_object)
-connection = sqlite3.connect("voter_data.db", detect_types=sqlite3.PARSE_DECLTYPES)
-write_road_group_data(road_groups, connection)
-write_road_data(roads, connection)
-write_voter_data(all_voters, roads, connection)
-write_vid_data(vids, connection)
+    sqlite3.register_adapter(datetime, adapt_datetime_object)
+    sqlite3.register_converter("DATETIME", convert_datetime_object)
+    connection = sqlite3.connect("voter_data.db", detect_types=sqlite3.PARSE_DECLTYPES)
+    write_road_group_data(road_groups, connection)
+    write_road_data(roads, connection)
+    write_voter_data(all_voters, roads, connection)
+    write_vid_data(vids, connection)
 
-print(f"All {len(all_voters)} voters scraped")
+    print(f"All {len(all_voters)} voters scraped")
+
+    return
+
+if __name__ == "__main__":
+    vid_sheet_import()
