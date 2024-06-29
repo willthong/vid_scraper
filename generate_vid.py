@@ -80,8 +80,8 @@ class PDF(FPDF):
         self.set_xy(60, 15)
         self.set_font("open-sans", "", 9)
         with self.table(
-            width=100,
-            col_widths=(23, 75),
+            width=150,
+            col_widths=(23, 127),
             align="LEFT",
             first_row_as_headings=False,
             borders_layout="None",
@@ -135,9 +135,9 @@ class PDF(FPDF):
 
         # VID lines
         self.line(159, 38, 159, 286)
-        self.line(168, 38, 168, 286)
-        self.line(177, 38, 177, 286)
-        self.line(186, 38, 186, 286)
+        self.line(169, 38, 169, 286)
+        self.line(179, 38, 179, 286)
+        self.line(189, 38, 189, 286)
 
 
 class NumberPDF(FPDF):
@@ -235,7 +235,7 @@ def fetch_voter_data(selected_ward):
             date_of_birth,
             note,
             voters.polling_district,
-            polling_districts.polling_station
+            polling_districts.polling_station as polling_station
         FROM voters 
         INNER JOIN roads ON roads.road_id = voters.road_id 
         INNER JOIN road_groups ON roads.road_group_id = road_groups.road_group_id 

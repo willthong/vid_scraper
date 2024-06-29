@@ -8,9 +8,7 @@ def import_polling_stations():
         csv_reader = csv.reader(file)
         for row in csv_reader:
             for code in row[1].split(","):
-                polling_stations.append((code, row[2]))
-
-    print(polling_stations)
+                polling_stations.append((code.strip(), row[2]))
 
     connection = sqlite3.connect("voter_data.db", detect_types=sqlite3.PARSE_DECLTYPES)
     cursor = connection.cursor()
