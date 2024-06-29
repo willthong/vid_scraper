@@ -9,9 +9,9 @@ import sqlite3
 
 # Find list of PDFs, pulled from database (it'll print every road group in that PD)
 
-# #TODO: Selection options with numbers of voters in the selection
+# TODO: Selection options with numbers of voters in the selection
 
-# #TODO select PDs
+# TODO: Select RGs within ward or print whole ward
 
 
 def dictionary_factory(cursor, row):
@@ -26,7 +26,7 @@ class PDF(FPDF):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.header_data = {
-            "ward": selected_ward,
+            "ward": "",
             "road": "",
             "road_group": "",
             "polling_district": "",
@@ -51,7 +51,7 @@ class PDF(FPDF):
             ("Ward", self.header_data["ward"]),
             ("Polling district", self.header_data["polling_district"]),
             ("Road group", self.header_data["road_group"]),
-            ("Polling place", "Ugh Will hasn't built this yet"),
+            ("Polling place", self.header_data["polling_station"]),
             ("Road", self.header_data["road"]),
         )
 
@@ -132,6 +132,12 @@ class PDF(FPDF):
             text="Printed and promoted by R Jewell, 10A The Highway, Gt Staughton, PE19 5DA",
             align="C",
         )
+
+        # VID lines
+        self.line(159, 38, 159, 286)
+        self.line(168, 38, 168, 286)
+        self.line(177, 38, 177, 286)
+        self.line(186, 38, 186, 286)
 
 
 class NumberPDF(FPDF):
@@ -228,17 +234,19 @@ def fetch_voter_data(selected_ward):
             has_postal,
             date_of_birth,
             note,
-            voters.polling_district
+            voters.polling_district,
+            polling_districts.polling_station
         FROM voters 
         INNER JOIN roads ON roads.road_id = voters.road_id 
         INNER JOIN road_groups ON roads.road_group_id = road_groups.road_group_id 
+        INNER JOIN polling_districts ON road_groups.polling_district_id = polling_districts.polling_district_id
         LEFT JOIN vids ON (vids.polling_district + vids.elector_number) = (voters.polling_district + voters.elector_number)
         AND vids.date = (
             SELECT MIN(vids_inner.date)
             from vids AS vids_inner
             WHERE (vids_inner.polling_district + vids_inner.elector_number) = (voters.polling_district + voters.elector_number)
         )
-        WHERE road_groups.ward = '{selected_ward}'
+        WHERE polling_districts.ward = '{selected_ward}'
         ORDER BY
             road_group,
             road,
@@ -270,7 +278,7 @@ def fetch_wards():
         """
         SELECT DISTINCT
             ward
-        FROM road_groups 
+        FROM polling_districts 
         ORDER BY
             ward
         """
@@ -294,6 +302,7 @@ def print_road(pdf_index, road_voters, selected_ward):
         "road": road_voters[0][0]["road"],
         "road_group": road_voters[0][0]["road_group"],
         "polling_district": road_voters[0][0]["polling_district"],
+        "polling_station": road_voters[0][0]["polling_station"],
     }
     pdf.add_page()
     pdf.set_font("open-sans", "", 9)
@@ -388,6 +397,7 @@ def print_road(pdf_index, road_voters, selected_ward):
     pdf.output(f"output_{pdf_index}.pdf")
     return f"output_{pdf_index}.pdf"
 
+
 def merge_pdfs(generated_files):
     merger = pypdf.PdfMerger()
     for pdf in generated_files:
@@ -414,6 +424,8 @@ def number_pdf(input_file_location, output_file_location):
     os.remove("temp_numbering.pdf")
     with open(output_file_location, "wb") as file:
         merge_writer.write(file)
+    os.remove(input_file_location)
+
 
 def generate_polling_district():
     wards = fetch_wards()
@@ -447,6 +459,7 @@ def generate_polling_district():
 
     data = fetch_voter_data(selected_ward)
 
+    # Put it into the polling_district table
     road_groups = sorted(set([voter["road_group"] for voter in data]))
     generated_files, pdf_index = [], 0
     for road_group_index, road_group in enumerate(road_groups):
@@ -464,10 +477,11 @@ def generate_polling_district():
             file_name = print_road(pdf_index, road_voters, selected_ward)
             generated_files += [file_name]
 
-    merge_pdfs(generated_files) 
+    merge_pdfs(generated_files)
 
     output_filename = selected_ward.lower().replace(" ", "_") + ".pdf"
     number_pdf("output_unnumbered.pdf", output_filename)
+
 
 if __name__ == "__main__":
     generate_polling_district()

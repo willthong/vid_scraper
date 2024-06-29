@@ -265,20 +265,41 @@ def convert_datetime_object(date_string):
     return datetime.strptime(date_string, "%Y-%m-%d %H:%M:%S")
 
 
+def write_polling_districts_data(polling_districts, connection):
+    cursor = connection.cursor()
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS polling_districts (
+            polling_district_id INTEGER PRIMARY KEY,
+            ward TEXT,
+            polling_district TEXT,
+            polling_station TEXT
+        )"""
+    )
+    insert_query = """
+        INSERT INTO polling_districts (ward, polling_district, polling_station)
+        VALUES (?, ?, ?)
+    """
+    cursor.executemany(insert_query, polling_districts)
+    connection.commit()
+    return
+
+
 def write_road_group_data(road_groups, connection):
     cursor = connection.cursor()
     cursor.execute(
         """
         CREATE TABLE IF NOT EXISTS road_groups (
             road_group_id INTEGER PRIMARY KEY,
-            ward TEXT,
-            polling_district TEXT,
-            road_group_name TEXT
+            polling_district_id TEXT,
+            road_group_name TEXT,
+            FOREIGN KEY (polling_district_id)
+            REFERENCES polling_districts(polling_district_id)
         )"""
     )
     insert_query = """
-        INSERT INTO road_groups (ward, polling_district, road_group_name)
-        VALUES (?, ?, ?)
+        INSERT INTO road_groups (polling_district_id, road_group_name)
+        VALUES (?, ?)
     """
     cursor.executemany(insert_query, road_groups)
     connection.commit()
@@ -386,7 +407,7 @@ def write_vid_data(vids, connection):
         """
     )
     insert_query = """
-        INSERT INTO vids
+        INSERT OR IGNORE INTO vids
         (polling_district, elector_number, voter_intention, labour_scale, date)
         VALUES 
         (?, ?, ?, ?, ?)
@@ -405,37 +426,49 @@ def write_vid_data(vids, connection):
     connection.commit()
     return
 
+
 def vid_sheet_import():
     all_voters = []
     for file in os.listdir("input"):
         filename = os.fsdecode(file)
         if filename.endswith(".pdf"):
             all_voters += load_pdf("input/" + filename)
-    road_groups = sorted(
-        set(
-            [
-                (voter["ward"], voter["polling_district"], voter["road_group"])
-                for voter in all_voters
-            ]
-        )
+    polling_districts = sorted(
+        # (Ward, polling district, polling station)
+        set([(voter["ward"], voter["polling_district"], "") for voter in all_voters])
     )
-
-    vids = split_vids(all_voters)
-    roads = sorted(
+    print(polling_districts)
+    road_groups = sorted(
+        # (Polling district, road group)
         set(
             [
                 (
-                    voter["road_name"],
-                    [group[2] for group in road_groups].index(voter["road_group"]) + 1,
+                    [ps[1] for ps in polling_districts].index(voter["polling_district"])
+                    + 1,
+                    voter["road_group"],
                 )
                 for voter in all_voters
             ]
         )
     )
+    roads = sorted(
+        set(
+            [
+                (
+                    voter["road_name"],
+                    [group[1] for group in road_groups].index(voter["road_group"]) + 1,
+                )
+                for voter in all_voters
+            ]
+        )
+    )
+    vids = split_vids(all_voters)
 
     sqlite3.register_adapter(datetime, adapt_datetime_object)
     sqlite3.register_converter("DATETIME", convert_datetime_object)
     connection = sqlite3.connect("voter_data.db", detect_types=sqlite3.PARSE_DECLTYPES)
+
+    write_polling_districts_data(polling_districts, connection)
     write_road_group_data(road_groups, connection)
     write_road_data(roads, connection)
     write_voter_data(all_voters, roads, connection)
@@ -444,6 +477,7 @@ def vid_sheet_import():
     print(f"All {len(all_voters)} voters scraped")
 
     return
+
 
 if __name__ == "__main__":
     vid_sheet_import()

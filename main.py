@@ -23,7 +23,7 @@ def select_import():
     if selected_output == "v":
         vid_sheet_import()
     if selected_output == "p":
-        vid_sheet_import()
+        import_polling_stations()
     if selected_output == "a":
         vid_sheet_import()
     if selected_output == "q":
