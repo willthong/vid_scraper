@@ -13,10 +13,11 @@ def import_polling_stations():
     connection = sqlite3.connect("voter_data.db", detect_types=sqlite3.PARSE_DECLTYPES)
     cursor = connection.cursor()
     for polling_station in polling_stations:
+        polling_station_condensed = polling_station[1].split(",")[0]
         cursor.execute(
             f"""
             UPDATE polling_districts
-            SET polling_station = '{polling_station[1]}'
+            SET polling_station = '{polling_station_condensed}'
             WHERE
                 polling_district = '015{polling_station[0]}'
         """

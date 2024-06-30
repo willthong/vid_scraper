@@ -286,6 +286,20 @@ def fetch_wards():
     return data
 
 
+def fetch_road_groups(selected_ward):
+    connection = sqlite3.connect("voter_data.db", detect_types=sqlite3.PARSE_DECLTYPES)
+    cursor = connection.cursor()
+    data = cursor.execute(
+        f"""
+        SELECT DISTINCT road_group_name, ward 
+        FROM road_groups 
+        JOIN polling_districts ON road_groups.polling_district_id = polling_districts.polling_district_id 
+        WHERE ward = '{selected_ward}'
+        """
+    ).fetchall()
+    return data
+
+
 def print_road(pdf_index, road_voters, selected_ward):
     pdf = PDF()
     pdf.add_font(
@@ -434,15 +448,43 @@ def generate_polling_district():
         for index, ward in enumerate(wards):
             print(f"{index + 1}) {ward[0]}")
         try:
-            selected_ward_id = input(f"\nSelect one of the above wards by number:")
+            selected_ward_id = input("\nSelect one of the above wards by number:")
             selected_ward_id = int(selected_ward_id.replace(")", "")) - 1
         except ValueError:
             print("Sorry - you need to enter a number.")
             continue
         if selected_ward_id < 0 or selected_ward_id > len(wards) - 1:
-            print("Please select a valid ward number from the list")
+            print("Please select a valid ward number from the list.\n")
         else:
             break
+    selected_ward = wards[selected_ward_id][0]
+    print(f"You selected {selected_ward}.")
+    road_groups = fetch_road_groups(selected_ward)
+    while True:
+        print("Road groups in :")
+        for index, road_group in enumerate(road_groups):
+            print(f"{index + 1}) {road_groups[index][0]}")
+        try:
+            selected_road_group_id = input(
+                "Which road group would you like to output? Or leave blank to output all road groups."
+            )
+            if selected_road_group_id == "":
+                break
+            selected_road_group_id = int(selected_road_group_id.replace(")", "")) - 1
+        except ValueError:
+            print("Sorry - you need to enter a number.")
+            continue
+        if selected_road_group_id < 0 or selected_ward_id > len(road_groups) - 1:
+            print("Please make a valid selection.\n")
+        else:
+            break
+    selected_road_group = (
+        road_groups[selected_road_group_id][0] if selected_road_group_id else None
+    )
+    if selected_ward:
+        print(f"You selected {selected_road_group}.\n")
+    else:
+        print("You selected all road groups.\n")
     while True:
         selected_output = input(
             "Would you like (V)ID sheets, (W)ARP sheets or (C)SV output?"
@@ -454,10 +496,7 @@ def generate_polling_district():
         else:
             break
 
-    selected_ward = wards[selected_ward_id][0]
-    print(f"Fetching voter data for {selected_ward}...")
-
-    data = fetch_voter_data(selected_ward)
+    data = fetch_voter_data(selected_ward, selected_road_group)
 
     # Put it into the polling_district table
     road_groups = sorted(set([voter["road_group"] for voter in data]))
