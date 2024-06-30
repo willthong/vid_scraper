@@ -11,8 +11,6 @@ import sqlite3
 
 # TODO: Selection options with numbers of voters in the selection
 
-# TODO: Select RGs within ward or print whole ward
-
 
 def dictionary_factory(cursor, row):
     dictionary = {}
@@ -213,12 +211,11 @@ def add_note_to_name(voter):
             return f"{name} ({age:.0f}; {note})"
 
 
-def fetch_voter_data(selected_ward):
+def fetch_voter_data(selected_ward, selected_road_group):
     connection = sqlite3.connect("voter_data.db", detect_types=sqlite3.PARSE_DECLTYPES)
     cursor = connection.cursor()
     cursor.row_factory = dictionary_factory
-    data = cursor.execute(
-        f"""
+    query = f"""
         SELECT 
             road_group_name as road_group, 
             voter_name as name, 
@@ -247,12 +244,19 @@ def fetch_voter_data(selected_ward):
             WHERE (vids_inner.polling_district + vids_inner.elector_number) = (voters.polling_district + voters.elector_number)
         )
         WHERE polling_districts.ward = '{selected_ward}'
+        """
+    if selected_road_group:
+        query += f"""
+            AND 
+                road_group = '{selected_road_group}' 
+        """
+    query += """
         ORDER BY
             road_group,
             road,
             voters.elector_number
         """
-    ).fetchall()
+    data = cursor.execute(query).fetchall()
     return data
 
 
@@ -474,7 +478,7 @@ def generate_polling_district():
         except ValueError:
             print("Sorry - you need to enter a number.")
             continue
-        if selected_road_group_id < 0 or selected_ward_id > len(road_groups) - 1:
+        if selected_road_group_id < 0 or selected_road_group_id > len(road_groups) - 1:
             print("Please make a valid selection.\n")
         else:
             break
@@ -518,8 +522,17 @@ def generate_polling_district():
 
     merge_pdfs(generated_files)
 
-    output_filename = selected_ward.lower().replace(" ", "_") + ".pdf"
+    if not selected_road_group:
+        output_filename = selected_ward.lower().replace(" ", "_") + ".pdf"
+    else:
+        output_filename = (
+            selected_ward.lower().replace(" ", "_")
+            + "_"
+            + selected_road_group.lower().replace(" ", "_")
+            + ".pdf"
+        )
     number_pdf("output_unnumbered.pdf", output_filename)
+    print(f"Successfully exported as {output_filename}")
 
 
 if __name__ == "__main__":
