@@ -6,6 +6,8 @@ import pprint
 import pypdf
 import re
 import sqlite3
+from data_functions import fetch_wards, fetch_road_groups
+
 
 # Find list of PDFs, pulled from database (it'll print every road group in that PD)
 
@@ -239,7 +241,7 @@ def fetch_voter_data(selected_ward, selected_road_group):
         INNER JOIN polling_districts ON road_groups.polling_district_id = polling_districts.polling_district_id
         LEFT JOIN vids ON (vids.polling_district + vids.elector_number) = (voters.polling_district + voters.elector_number)
         AND vids.date = (
-            SELECT MIN(vids_inner.date)
+            SELECT MAX(vids_inner.date)
             from vids AS vids_inner
             WHERE (vids_inner.polling_district + vids_inner.elector_number) = (voters.polling_district + voters.elector_number)
         )
@@ -275,36 +277,77 @@ def split_into_houses(road_voters):
     return output_road_voters
 
 
-def fetch_wards():
-    connection = sqlite3.connect("voter_data.db", detect_types=sqlite3.PARSE_DECLTYPES)
-    cursor = connection.cursor()
-    data = cursor.execute(
-        """
-        SELECT DISTINCT
-            ward
-        FROM polling_districts 
-        ORDER BY
-            ward
-        """
-    ).fetchall()
-    return data
+def print_cover_sheet(cover_sheet, selected_ward, road_group, a_voter):
+    pdf = PDF()
+    pdf.add_font(
+        "open-sans",
+        style="B",
+        fname="fonts/OpenSans-Bold.ttf",
+    )
+    pdf.set_margins(0.5, 100, 10)
+    pdf.b_margin = pdf.b_margin / 2
+    # Update header
+    pdf.header_data = {
+        "ward": selected_ward,
+        "road": "(Cover sheet)",
+        "road_group": road_group,
+        "polling_district": a_voter["polling_district"],
+        "polling_station": a_voter["polling_station"],
+    }
+    pdf.add_page()
+    pdf.set_font("open-sans", "", 12)
+    pdf.set_fallback_fonts(["segoe-ui-emoji"], exact_match=False)
+
+    table_data = (("Road", "Properties", "Voters"),)
+    for road in cover_sheet:
+        # Address line
+        table_data += (
+            (
+                road["road_name"],
+                str(road["property_count"]),
+                str(road["voter_count"]),
+            ),
+        )
+    table_data += (
+        (
+            "Total",
+            str(sum([road["property_count"] for road in cover_sheet])),
+            str(sum([road["voter_count"] for road in cover_sheet])),
+        ),
+    )
+
+    pdf.set_xy(5, 35)
+    pdf.set_line_width(0.1)
+    with pdf.table(
+        width=140,
+        col_widths=(70, 30, 30),
+        align="LEFT",
+        text_align="LEFT",
+        first_row_as_headings=True,
+        borders_layout="NONE",
+        line_height=8,
+        padding=0,
+    ) as table:
+        shaded = False
+        for data_row in table_data:
+            if shaded:
+                shaded = False
+            else:
+                shaded = True
+            shaded_row = FontFace(fill_color=(220, 220, 220))
+            unshaded_row = FontFace(fill_color=(255, 255, 255))
+            if shaded:
+                row = table.row(style=shaded_row)
+            else:
+                row = table.row(style=unshaded_row)
+            for datum in data_row:
+                row.cell(datum)
+
+    pdf.output(f"output_cover_{road_group}.pdf")
+    return f"output_cover_{road_group}.pdf"
 
 
-def fetch_road_groups(selected_ward):
-    connection = sqlite3.connect("voter_data.db", detect_types=sqlite3.PARSE_DECLTYPES)
-    cursor = connection.cursor()
-    data = cursor.execute(
-        f"""
-        SELECT DISTINCT road_group_name, ward 
-        FROM road_groups 
-        JOIN polling_districts ON road_groups.polling_district_id = polling_districts.polling_district_id 
-        WHERE ward = '{selected_ward}'
-        """
-    ).fetchall()
-    return data
-
-
-def print_road(pdf_index, road_voters, selected_ward):
+def print_road(road_voters, selected_ward):
     pdf = PDF()
     pdf.add_font(
         "open-sans",
@@ -332,7 +375,7 @@ def print_road(pdf_index, road_voters, selected_ward):
             "Name",
             "Selection",
             "Last VID",
-            "",
+            TableSpan.COL,
             "💌",
             "🌹",
             "A",
@@ -412,8 +455,8 @@ def print_road(pdf_index, road_voters, selected_ward):
             for datum in data_row:
                 row.cell(datum)
 
-    pdf.output(f"output_{pdf_index}.pdf")
-    return f"output_{pdf_index}.pdf"
+    pdf.output(f"output_{road_voters[0][0]['road']}.pdf")
+    return f"output_{road_voters[0][0]['road']}.pdf"
 
 
 def merge_pdfs(generated_files):
@@ -485,7 +528,7 @@ def generate_polling_district():
     selected_road_group = (
         road_groups[selected_road_group_id][0] if selected_road_group_id else None
     )
-    if selected_ward:
+    if selected_road_group:
         print(f"You selected {selected_road_group}.\n")
     else:
         print("You selected all road groups.\n")
@@ -504,23 +547,39 @@ def generate_polling_district():
 
     # Put it into the polling_district table
     road_groups = sorted(set([voter["road_group"] for voter in data]))
-    generated_files, pdf_index = [], 0
+    all_pdfs, vid_sheet_pdfs = [], []
+
     for road_group_index, road_group in enumerate(road_groups):
+        cover_sheet = []
         roads = sorted(
             set([voter["road"] for voter in data if voter["road_group"] == road_group])
         )
+        # Generate cover sheet
+
         for road in roads:
+
             road_voters = [voter for voter in data if voter["road"] == road]
+            this_road_counts = {"road_name": road}
+            this_road_counts["voter_count"] = len(road_voters)
             road_voters = order_road_voters(road_voters)
             road_voters = split_into_houses(road_voters)
+            this_road_counts["property_count"] = len(road_voters)
+            print(this_road_counts)
+            cover_sheet += [this_road_counts]
             print(
                 f"Printing road group {road_voters[0][0]['road_group']} ({road_group_index+1} of {len(road_groups)})"
             )
-            pdf_index += 1
-            file_name = print_road(pdf_index, road_voters, selected_ward)
-            generated_files += [file_name]
 
-    merge_pdfs(generated_files)
+            file_name = print_road(road_voters, selected_ward)
+            vid_sheet_pdfs += [file_name]
+
+        file_name = print_cover_sheet(
+            cover_sheet, selected_ward, road_group, road_voters[0][0]
+        )
+        all_pdfs += [file_name]
+        all_pdfs += [pdf for pdf in vid_sheet_pdfs]
+
+    merge_pdfs(all_pdfs)
 
     if not selected_road_group:
         output_filename = selected_ward.lower().replace(" ", "_") + ".pdf"

@@ -83,6 +83,8 @@ def fetch_vid(line, elector_number, name, vid_text):
         last_vid = "Liberal Democrat"
     elif "DON'T KNOW" in line[5]:
         last_vid = "Don't know"
+    elif "WON'T SAY" in line[5]:
+        last_vid = "Won't say"
     else:
         last_vid = line[5].title()
     try:

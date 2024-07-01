@@ -1,7 +1,7 @@
 temp/
 input/
-output.pdf
 voter_data.db
+*.pdf
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

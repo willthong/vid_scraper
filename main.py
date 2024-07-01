@@ -1,6 +1,7 @@
 from generate_vid import generate_polling_district
 from scrape_vid import vid_sheet_import
 from import_polling_stations import import_polling_stations
+from insyte import insyte
 
 
 def select_import():
@@ -47,7 +48,7 @@ def kontacts_kreated():
     elif selected_output == "e":
         generate_polling_district()
     elif selected_output == "v":
-        view_stats()
+        insyte()
     elif selected_output == "q":
         exit()
 
