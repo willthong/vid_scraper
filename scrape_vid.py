@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+from data_functions import write_vid_data
 import os
 import pdfplumber
 import pprint
@@ -388,43 +389,6 @@ def write_voter_data(all_voters, roads, connection):
 
     duplicate_check(voters_tuples)
     cursor.executemany(insert_query, voters_tuples)
-    connection.commit()
-    return
-
-
-def write_vid_data(vids, connection):
-    cursor = connection.cursor()
-    cursor.execute(
-        """
-        CREATE TABLE IF NOT EXISTS vids (
-            vid_id INTEGER PRIMARY KEY,
-            polling_district TEXT,
-            elector_number TEXT,
-            voter_intention TEXT,
-            labour_scale TEXT,
-            date TEXT,
-            FOREIGN KEY (polling_district, elector_number) 
-            REFERENCES voters(polling_district, elector_number)
-        )
-        """
-    )
-    insert_query = """
-        INSERT OR IGNORE INTO vids
-        (polling_district, elector_number, voter_intention, labour_scale, date)
-        VALUES 
-        (?, ?, ?, ?, ?)
-        """
-    tuples = []
-    for vid in vids:
-        vid_tuple = (
-            vid["polling_district"],
-            vid["elector_number"],
-            vid.get("vid", ""),
-            vid.get("vid_labour_scale", ""),
-            vid.get("vid_date", ""),
-        )
-        tuples += [vid_tuple]
-    cursor.executemany(insert_query, tuples)
     connection.commit()
     return
 
