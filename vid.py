@@ -55,7 +55,7 @@ def convert_code_to_vid(code):
             if not vs:
                 vid["vid"] = "Liberal Democrats"
             else:
-                vid["vid_will_not_vote_for"] = "Liberal Democrats"
+                vid["vid_will_not_vote_for"] = "Liberal Democrat"
         elif character == "I":
             if not vs:
                 vid["vid"] = "Independent"
@@ -73,6 +73,8 @@ def convert_code_to_vid(code):
             vid["vid_labour_scale"] = character
         elif character == "/":
             vs = True
+    if "vid_has_voted" in vid.keys() and "vid" not in vid.keys():
+        vid["vid"] = "Won't say"
     return vid
 
 
@@ -155,17 +157,20 @@ def import_file(
                 row[header_indices["elector_number"]],
             )
             if not voter:
-                invalid_rows.append(row)
+                invalid_rows.append((row, "Missing voter"))
                 continue
 
             code = row[header_indices["code"]].upper().strip()
             if re.search(r"[^VILTSGRADXZNU0-9/]", code):
-                invalid_rows.append(code)
+                invalid_rows.append(code, "Invalid code")
+                continue
             elif "V" in code:
-                if "X" in code:
-                    invalid_rows.append(code)
+                if "Z" in code:
+                    invalid_rows.append(
+                        code, "You can't be both a voter and a non-voter"
+                    )
                 if "D" in code:
-                    invalid_rows.append(code)
+                    invalid_rows.append(code, "You can't be both a voter and undecided")
             vid = convert_code_to_vid(code)
             vid["polling_district"] = row[header_indices["polling_district"]]
             vid["elector_number"] = row[header_indices["elector_number"]]
@@ -174,6 +179,7 @@ def import_file(
             # (Name, code)
             extra_information.append((voter[2], code))
 
+    print(invalid_rows)
     valid_vids_table = Table(show_header=True, box=box.HORIZONTALS)
     valid_vids_table.add_row(
         "Name",
@@ -185,7 +191,7 @@ def import_file(
     )
     for index, vid in enumerate(vids):
         valid_vids_table.add_row(
-            extra_information[index][1],
+            extra_information[index][0],
             extra_information[index][1],
             "True" if "vid_has_voted" in vid.keys() else "False",
             vid["vid"],
@@ -195,6 +201,17 @@ def import_file(
 
     console = Console()
     console.print(valid_vids_table)
+
+    if invalid_rows:
+        invalid_vids_table = Table(show_header=False, box=box.HORIZONTALS)
+        print(f"These rows failed to import:")
+        for row in invalid_rows:
+            invalid_vids_table.add_row(str(row[0]), row[1])
+    console.print(invalid_vids_table)
+
+    typer.confirm("Are you sure you want to add these records?", abort=True)
+    write_vid_data(vids, connection)
+    print("Record written!")
 
 
 if __name__ == "__main__":
