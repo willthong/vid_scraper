@@ -14,16 +14,16 @@ def fetch_wards():
     ).fetchall()
     return data
 
-def fetch_polling_districts(selected_ward):
+def fetch_polling_districts(selected_ward=None):
     connection = sqlite3.connect("voter_data.db", detect_types=sqlite3.PARSE_DECLTYPES)
     cursor = connection.cursor()
-    data = cursor.execute(
-        f"""
+    query = f"""
         SELECT DISTINCT polling_district
         FROM polling_districts 
-        WHERE ward = '{selected_ward}'
-        """
-    ).fetchall()
+    """
+    if selected_ward:
+        query += "WHERE ward = '{selected_ward}'"
+    data = cursor.execute(query).fetchall()
     return data
 
 def fetch_road_groups(selected_ward):
@@ -80,3 +80,27 @@ def write_vid_data(vids, connection):
     connection.commit()
     return
 
+
+def fetch_voter(connection, polling_district, elector_number):
+    cursor = connection.cursor()
+    query = f"""
+        SELECT
+            *
+        FROM
+            voters
+        WHERE
+            (voters.polling_district = '{polling_district}' AND voters.elector_number = '{elector_number}')
+    """
+    data = cursor.execute(query)
+    return data.fetchone()
+
+
+def delete_voter(connection, voter):
+    cursor = connection.cursor()
+    query = f"""
+        DELETE FROM voters
+        WHERE
+            (voters.polling_district = '{voter[0]}' AND voters.elector_number = '{voter[1]}')
+    """
+    data = cursor.execute(query)
+    return data
