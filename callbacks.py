@@ -29,7 +29,7 @@ def vid_code_callback(value: str):
         """
         )
     if "V" in value:
-        if "X" in value:
+        if "Z" in value:
             raise typer.BadParameter("They can't both have voted and be a non-voter.")
         if "D" in value:
             raise typer.BadParameter(

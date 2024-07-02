@@ -1,6 +1,7 @@
 import csv
 from datetime import datetime
 from pathlib import Path
+import re
 import sqlite3
 from typing import Optional
 
@@ -23,50 +24,54 @@ app = typer.Typer()
 
 def convert_code_to_vid(code):
     vid, vs = {}, False
-    for character in code:
-        if character == "V":
+    seen_nv_code = False
+    for index, character in enumerate(code):
+        if character == "N" and code[index + 1] == "V":
+            seen_nv_code = True
+            vid["vid"] = "Non-voter"
+        elif not seen_nv_code and character == "V":
             vid["vid_has_voted"] = True
-        if character == "L":
+        elif character == "L":
             if not vs:
                 vid["vid"] = "Labour"
             else:
                 vid["vid_will_not_vote_for"] = "Labour"
-        if character == "T":
+        elif character == "T":
             if not vs:
                 vid["vid"] = "Conservative"
             else:
                 vid["vid_will_not_vote_for"] = "Conservative"
-        if character == "R":
+        elif character == "R":
             if not vs:
                 vid["vid"] = "Reform"
             else:
                 vid["vid_will_not_vote_for"] = "Reform"
-        if character == "G":
+        elif character == "G":
             if not vs:
                 vid["vid"] = "Green"
             else:
                 vid["vid_will_not_vote_for"] = "Green"
-        if character == "S":
+        elif character == "S":
             if not vs:
                 vid["vid"] = "Liberal Democrats"
             else:
                 vid["vid_will_not_vote_for"] = "Liberal Democrats"
-        if character == "I":
+        elif character == "I":
             if not vs:
                 vid["vid"] = "Independent"
             else:
                 vid["vid_will_not_vote_for"] = "Independent"
-        if character == "D":
+        elif character in ["D", "U"]:
             vid["vid"] = "Don't know"
-        if character == "A":
+        elif character == "A":
             vid["vid"] = "Against"
-        if character == "X":
+        elif character == "X":
             vid["vid"] = "Won't say"
-        if character == "Z":
+        elif character == "Z":
             vid["vid"] = "Non-voter"
-        if character in ["1", "2", "3", "4", "5", "6", "7", "8", "9"]:
+        elif character in ["1", "2", "3", "4", "5", "6", "7", "8", "9"]:
             vid["vid_labour_scale"] = character
-        if character == "/":
+        elif character == "/":
             vs = True
     return vid
 
@@ -131,23 +136,65 @@ def import_file(
     date: datetime,
 ):
 
+    connection = sqlite3.connect("voter_data.db", detect_types=sqlite3.PARSE_DECLTYPES)
+
     with file.open("r", encoding="utf-8") as file_object:
         reader = csv.reader(file_object)
         header_row = next(reader)
         header_indices = {}
         for cell_index, cell in enumerate(header_row):
-            if cell == "polling_station":
-                header_indices[cell_index] = "polling_station"
-            elif cell == "elector_number":
-                header_indices[cell_index] = "elector_number"
-            elif cell == "code":
-                header_indices[cell_index] = "code"
+            if cell in ["polling_district", "elector_number", "code"]:
+                header_indices[cell] = cell_index
             else:
                 raise Exception(f"Unknown column: '{cell}'")
-        print(header_indices)
-
+        invalid_rows, vids, extra_information = [], [], []
         for row in reader:
-            print(row)
+            voter = fetch_voter(
+                connection,
+                row[header_indices["polling_district"]],
+                row[header_indices["elector_number"]],
+            )
+            if not voter:
+                invalid_rows.append(row)
+                continue
+
+            code = row[header_indices["code"]].upper().strip()
+            if re.search(r"[^VILTSGRADXZNU0-9/]", code):
+                invalid_rows.append(code)
+            elif "V" in code:
+                if "X" in code:
+                    invalid_rows.append(code)
+                if "D" in code:
+                    invalid_rows.append(code)
+            vid = convert_code_to_vid(code)
+            vid["polling_district"] = row[header_indices["polling_district"]]
+            vid["elector_number"] = row[header_indices["elector_number"]]
+            vid["vid_date"] = date
+            vids.append(vid)
+            # (Name, code)
+            extra_information.append((voter[2], code))
+
+    valid_vids_table = Table(show_header=True, box=box.HORIZONTALS)
+    valid_vids_table.add_row(
+        "Name",
+        "Code",
+        "Voted?",
+        "Voter intention",
+        "Labour likelihood",
+        "Won't vote for",
+    )
+    for index, vid in enumerate(vids):
+        valid_vids_table.add_row(
+            extra_information[index][1],
+            extra_information[index][1],
+            "True" if "vid_has_voted" in vid.keys() else "False",
+            vid["vid"],
+            str(vid.get("vid_labour_scale", "")),
+            vid.get("vid_will_not_vote_for", ""),
+        )
+
+    console = Console()
+    console.print(valid_vids_table)
 
 
 if __name__ == "__main__":
