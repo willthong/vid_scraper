@@ -7,10 +7,7 @@ def dictionary_factory(cursor, row):
         dictionary[column[0]] = row[index]
     return dictionary
 
-
-
-def fetch_wards(ward=None):
-    connection = sqlite3.connect("voter_data.db", detect_types=sqlite3.PARSE_DECLTYPES)
+def fetch_wards(connection, ward=None):
     cursor = connection.cursor()
     query = """
         SELECT DISTINCT
@@ -19,7 +16,7 @@ def fetch_wards(ward=None):
         ORDER BY
             ward
         """
-    if ward:
+    if ward and len(ward) > 0:
         query += f"WHERE ward in {tuple(ward)}"
     data = cursor.execute(query).fetchall()
     return data

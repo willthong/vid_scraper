@@ -1,5 +1,6 @@
-from kontakt_kreator.data_functions import fetch_postal_vids
+from kontakt_kreator.autocomplete import complete_wards
 from kontakt_kreator.callbacks import ward_callback
+from kontakt_kreator.data_functions import fetch_postal_vids
 
 from datetime import datetime, timedelta
 import sqlite3
@@ -45,7 +46,7 @@ def fetch_voter_data(connection, selected_ward):
             vids_inner.elector_number = voters.elector_number
         )
     """
-    if selected_ward[0] != "all":
+    if len(selected_ward) > 0:
         query += f"WHERE polling_districts.ward IN {tuple(selected_ward)}"
     query += """
     ORDER BY
@@ -223,9 +224,10 @@ def contact_and_promise_rates(
         Optional[List[str]], 
         typer.Option(
             help="Ward name to view rates for, eg 'Huntingdon North'.",
-            callback=ward_callback
+            callback=ward_callback,
+            autocompletion=complete_wards,
         )
-    ] = ["all"],
+    ] = [],
     sort: Annotated[
         Optional[str], 
         typer.Option(help="One of 'contact_rate', 'net_promises' or 'promise_rate'.")

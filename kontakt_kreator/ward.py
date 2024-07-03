@@ -1,3 +1,5 @@
+import sqlite3
+
 from kontakt_kreator.data_functions import fetch_wards
 
 from rich import print
@@ -10,7 +12,8 @@ console = Console()
 
 @app.command()
 def ls():
-    wards = fetch_wards()
+    connection = sqlite3.connect("voter_data.db", detect_types=sqlite3.PARSE_DECLTYPES)
+    wards = fetch_wards(connection)
     for ward in wards:
         print(ward[0])
 
