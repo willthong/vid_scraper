@@ -1,17 +1,27 @@
 import sqlite3
+from rich import print
 
-def fetch_wards():
+def dictionary_factory(cursor, row):
+    dictionary = {}
+    for index, column in enumerate(cursor.description):
+        dictionary[column[0]] = row[index]
+    return dictionary
+
+
+
+def fetch_wards(ward=None):
     connection = sqlite3.connect("voter_data.db", detect_types=sqlite3.PARSE_DECLTYPES)
     cursor = connection.cursor()
-    data = cursor.execute(
-        """
+    query = """
         SELECT DISTINCT
             ward
         FROM polling_districts 
         ORDER BY
             ward
         """
-    ).fetchall()
+    if ward:
+        query += f"WHERE ward in {tuple(ward)}"
+    data = cursor.execute(query).fetchall()
     return data
 
 def fetch_polling_districts(selected_ward=None):
@@ -26,17 +36,16 @@ def fetch_polling_districts(selected_ward=None):
     data = cursor.execute(query).fetchall()
     return data
 
-def fetch_road_groups(selected_ward):
-    connection = sqlite3.connect("voter_data.db", detect_types=sqlite3.PARSE_DECLTYPES)
+def fetch_road_groups(connection, selected_wards=None):
     cursor = connection.cursor()
-    data = cursor.execute(
-        f"""
+    query = f"""
         SELECT DISTINCT road_group_name, ward 
         FROM road_groups 
         JOIN polling_districts ON road_groups.polling_district_id = polling_districts.polling_district_id 
-        WHERE ward = '{selected_ward}'
         """
-    ).fetchall()
+    if selected_wards and len(selected_wards) > 0:
+        query += f"WHERE polling_districts.ward IN {tuple(selected_wards)}"
+    data = cursor.execute(query).fetchall()
     return data
 
 
@@ -95,6 +104,56 @@ def fetch_voter(connection, polling_district, elector_number):
     return data.fetchone()
 
 
+def fetch_voter_data(connection, selected_ward, road_groups):
+    cursor = connection.cursor()
+    cursor.row_factory = dictionary_factory
+    query = f"""
+        SELECT 
+            road_group_name as road_group, 
+            voter_name as name, 
+            address, 
+            road_name as road,
+            voters.elector_number,
+            property_number,
+            selection_id,
+            vids.voter_intention as last_vid,
+            vids.labour_scale as last_labour_scale,
+            vids.date as last_vid_date,
+            is_member,
+            has_postal,
+            date_of_birth,
+            note,
+            voters.polling_district,
+            polling_districts.polling_station as polling_station,
+            polling_districts.ward as ward
+        FROM voters 
+        INNER JOIN roads ON roads.road_id = voters.road_id 
+        INNER JOIN road_groups ON roads.road_group_id = road_groups.road_group_id 
+        INNER JOIN polling_districts ON road_groups.polling_district_id = polling_districts.polling_district_id
+        LEFT JOIN vids ON (vids.polling_district = voters.polling_district AND vids.elector_number = voters.elector_number)
+        AND vids.date = (
+            SELECT MAX(vids_inner.date) FROM vids AS vids_inner
+            WHERE (
+                vids_inner.polling_district = voters.polling_district AND 
+                vids_inner.elector_number = voters.elector_number
+            )
+        )
+        """
+    if selected_ward:
+        query +=f"WHERE polling_districts.ward = '{selected_ward}'"
+    if len(road_groups) > 0:
+        query += f"""WHERE 
+            road_group IN {tuple(road_groups)} 
+        """
+    query += """
+        ORDER BY
+            road_group,
+            road,
+            voters.elector_number
+        """
+    data = cursor.execute(query).fetchall()
+    return data
+
 def delete_voter(connection, voter):
     cursor = connection.cursor()
     query = f"""
@@ -103,4 +162,16 @@ def delete_voter(connection, voter):
             (voters.polling_district = '{voter[0]}' AND voters.elector_number = '{voter[1]}')
     """
     data = cursor.execute(query)
+    return data
+
+def fetch_postal_vids(connection, date):
+    cursor = connection.cursor()
+    cursor.row_factory = dictionary_factory
+    data = cursor.execute(
+        f"""
+        SELECT * 
+        FROM vids 
+        WHERE date >= '{date}' AND has_voted = '1'
+        """
+    ).fetchall()
     return data

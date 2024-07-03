@@ -1,8 +1,9 @@
 from datetime import datetime, timedelta
-from data_functions import write_vid_data
+
+from kontakt_kreator.data_functions import write_vid_data
+
 import os
 import pdfplumber
-import pprint
 import re
 import sqlite3
 

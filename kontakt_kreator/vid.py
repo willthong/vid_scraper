@@ -3,7 +3,6 @@ from datetime import datetime
 from pathlib import Path
 import re
 import sqlite3
-from typing import Optional
 
 from rich import print, box
 from rich.console import Console
@@ -11,12 +10,12 @@ from rich.table import Table
 import typer
 from typing_extensions import Annotated
 
-from callbacks import (
+from kontakt_kreator.callbacks import (
     polling_district_callback,
     elector_number_callback,
     vid_code_callback,
 )
-from data_functions import write_vid_data, fetch_voter
+from kontakt_kreator.data_functions import write_vid_data, fetch_voter
 
 
 app = typer.Typer()
@@ -179,7 +178,6 @@ def import_file(
             # (Name, code)
             extra_information.append((voter[2], code))
 
-    print(invalid_rows)
     valid_vids_table = Table(show_header=True, box=box.HORIZONTALS)
     valid_vids_table.add_row(
         "Name",
